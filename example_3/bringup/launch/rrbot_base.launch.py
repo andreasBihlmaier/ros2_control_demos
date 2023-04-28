@@ -13,16 +13,26 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, IncludeLaunchDescription, GroupAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    # world file
+    world_model_path = PathJoinSubstitution(
+        [
+            "/usr/share/gazebo-11",
+            "worlds",
+            "empty.world"
+        ]
+    )
+
     # Declare arguments
     declared_arguments = []
     declared_arguments.append(
@@ -72,6 +82,13 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
+            "use_sim",
+            default_value="false",
+            description="Simulate robot in gazebo.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
             "mock_sensor_commands",
             default_value="false",
             description="Enable fake command interfaces for sensors used for simple simulations. \
@@ -97,6 +114,13 @@ def generate_launch_description():
             description="Start RViz2 automatically with this launch file.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            name='world_model',
+            default_value=world_model_path,
+            description='Absolute path to world file'
+        )
+    )
 
     # Initialize Arguments
     runtime_config_package = LaunchConfiguration("runtime_config_package")
@@ -104,11 +128,13 @@ def generate_launch_description():
     description_package = LaunchConfiguration("description_package")
     description_file = LaunchConfiguration("description_file")
     prefix = LaunchConfiguration("prefix")
+    use_sim = LaunchConfiguration("use_sim")
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
     mock_sensor_commands = LaunchConfiguration("mock_sensor_commands")
     slowdown = LaunchConfiguration("slowdown")
     robot_controller = LaunchConfiguration("robot_controller")
     start_rviz = LaunchConfiguration("start_rviz")
+    world_model = LaunchConfiguration('world_model')
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -116,11 +142,15 @@ def generate_launch_description():
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution(
-                [FindPackageShare(description_package), "urdf", description_file]
+                [FindPackageShare(description_package),
+                 "urdf", description_file]
             ),
             " ",
             "prefix:=",
             prefix,
+            " ",
+            "use_sim:=",
+            use_sim,
             " ",
             "use_mock_hardware:=",
             use_mock_hardware,
@@ -166,16 +196,36 @@ def generate_launch_description():
         condition=IfCondition(start_rviz),
     )
 
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [PathJoinSubstitution(
+                [FindPackageShare("gazebo_ros"), "launch", "gazebo.launch.py"])]
+        ),
+        launch_arguments={"verbose": "true",
+                          "pause": "false", "world": world_model}.items(),
+    )
+
+    # Using a URDF file
+    spawn_entity = Node(
+        package="gazebo_ros",
+        executable="spawn_entity.py",
+        arguments=["-topic", "robot_description",
+                   "-entity", "rrbot", "-x 0", "-y 0", "-z 0.0"],
+        output="screen",
+    )
+
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+        arguments=["joint_state_broadcaster",
+                   "--controller-manager", "/controller_manager"],
     )
 
     robot_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=[robot_controller, "--controller-manager", "/controller_manager"],
+        arguments=[robot_controller,
+                   "--controller-manager", "/controller_manager"],
     )
 
     # Delay rviz start after `joint_state_broadcaster`
@@ -195,7 +245,19 @@ def generate_launch_description():
     )
 
     nodes = [
-        control_node,
+        GroupAction(
+            condition=IfCondition(use_sim),
+            actions=[
+                gazebo,
+                spawn_entity,
+            ]
+        ),
+        GroupAction(
+            condition=UnlessCondition(use_sim),
+            actions=[
+                control_node,
+            ]
+        ),
         robot_state_pub_node,
         joint_state_broadcaster_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,

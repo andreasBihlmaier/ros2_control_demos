@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100  # Hz
+    update_rate: 1000  # Hz
 
     forward_position_controller:
       type: position_controllers/JointGroupPositionController
@@ -11,11 +11,17 @@ controller_manager:
     forward_acceleration_controller:
       type: forward_command_controller/ForwardCommandController
 
+    forward_effort_controller:
+      type: effort_controllers/JointGroupEffortController
+
     forward_illegal1_controller:
       type: forward_command_controller/ForwardCommandController
 
     forward_illegal2_controller:
       type: forward_command_controller/ForwardCommandController
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -39,6 +45,12 @@ forward_acceleration_controller:
       - joint2
     interface_name: acceleration
 
+forward_effort_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+
 forward_illegal1_controller:
   ros__parameters:
     joints:
@@ -50,3 +62,20 @@ forward_illegal2_controller:
     joints:
       - joint2
     interface_name: position
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+    command_interfaces:
+    #  - position
+    #  - velocity
+      - effort
+    state_interfaces:
+      - position
+      - velocity
+    open_loop_control: false
+    gains:
+      joint1: { p: 200.0, i: 0.0, d: 50.0 }
+      joint2: { p: 200.0, i: 0.0, d: 50.0 }
