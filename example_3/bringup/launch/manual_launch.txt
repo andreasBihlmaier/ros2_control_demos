@@ -1,0 +1,3 @@
+ros2 launch gazebo_ros gazebo.launch.py verbose:=true world:=/usr/share/gazebo-11/worlds/empty.world
+ros2 run robot_state_publisher robot_state_publisher --ros-args -p robot_description:="`ros2 run xacro xacro $PWD/install/ros2_control_demo_example_3/share/ros2_control_demo_example_3/urdf/rrbot_system_multi_interface.urdf.xacro use_sim:=true`"
+ros2 run gazebo_ros spawn_entity.py -topic robot_description -entity rrbot
